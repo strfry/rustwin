@@ -11,29 +11,15 @@ extern crate rustc_serialize as serialize;
 use serialize::hex::FromHex;
 use serialize::hex::ToHex;
 
-
-#[repr(C)] pub struct Tox_Options { private: [u8; 0] }
-#[repr(C)] pub struct Tox { private: [u8; 0] }
-//#[repr(C)] pub struct Tox_Options { private: [u8; 0] }
-
-#[repr(C)]
-#[derive(Debug)]
-enum TOX_CONNECTION {
-    TOX_CONNECTION_NONE,
-    TOX_CONNECTION_TCP,
-    TOX_CONNECTION_UDP
-}
-
-#[repr(C)]
-struct ToxContext {
-    private: [u8; 0]
-}
-
-type tox_callback_self_connection_status_cb = extern "C" fn (_tox: *mut Tox, connection_status: TOX_CONNECTION, _context: *mut ToxContext);
-type tox_friend_request_cb = extern "C" fn (_tox: *mut Tox, public_key: *const uint8_t, message: *const uint8_t, length: size_t, user_data: *mut ToxContext);
+mod toxcore;
+use toxcore::*;
 
 
-extern "C" fn friend_request(_tox: *mut Tox, public_key: *const uint8_t, message: *const uint8_t, length: size_t, user_data: *mut ToxContext)
+#[link(name = "toxcore")]
+extern { fn tox_version_major() -> libc::uint32_t ; }
+
+
+extern "C" fn friend_request(_tox: *mut Tox, public_key: *const uint8_t, message: *const uint8_t, length: size_t, user_data: *mut ::std::os::raw::c_void)
 {
     unsafe {
         let len = tox_address_size() as usize;
@@ -43,32 +29,10 @@ extern "C" fn friend_request(_tox: *mut Tox, public_key: *const uint8_t, message
     }
 }
 
-extern "C" fn callback(_tox: *mut Tox, connection_status: TOX_CONNECTION, _context: *mut ToxContext) {
+extern "C" fn callback(_tox: *mut Tox, connection_status: TOX_CONNECTION, _context: *mut ::std::os::raw::c_void) {
     println!("Connection to Tox network via {:?}", connection_status);
 } 
 
-#[link(name = "toxcore")]
-extern {
-    fn tox_version_major() -> uint32_t;
-    fn tox_version_minor() -> uint32_t;
-    fn tox_version_patch() -> uint32_t;
-
-    fn tox_new(options: *const Tox_Options, err: *mut uint32_t) -> *mut Tox;
-
-    fn tox_public_key_size() -> uint32_t;
-    fn tox_self_get_public_key(tox: *const Tox, public_address: *mut uint8_t);
-    
-    fn tox_address_size() -> uint32_t;
-    fn tox_self_get_address(tox: *const Tox, public_address: *mut uint8_t);
-
-    fn tox_callback_self_connection_status(tox: *const Tox, cb: tox_callback_self_connection_status_cb);
-
-    fn tox_callback_friend_request(tox: *mut Tox, cb: tox_friend_request_cb);
-
-    fn tox_iterate(tox: *const Tox);
-
-    fn tox_bootstrap(tox: *mut Tox, address: *const c_char, port: uint16_t, public_key: *const uint8_t, error: *mut uint32_t) -> bool;
-}
 
 fn main() {
     let major = unsafe { tox_version_major() };
@@ -80,7 +44,7 @@ fn main() {
 
     let mut tox = unsafe {tox_new(std::ptr::null(), &mut err)};
 
-    unsafe { tox_callback_self_connection_status(tox, callback) };
+    unsafe { tox_callback_self_connection_status(tox, Some(callback)) };
 
     println!("tox_new(error={}) -> {:?}", err, tox);
 
@@ -94,7 +58,7 @@ fn main() {
     }
 
     unsafe {
-        tox_callback_friend_request(tox, friend_request);
+        tox_callback_friend_request(tox, Some(friend_request));
     }
 
     unsafe {
@@ -105,8 +69,9 @@ fn main() {
     }
 
     unsafe {
+        let mut nothing = 0 as *const ::std::os::raw::c_void;
         println!("loop tox_iterate()");
-        loop { tox_iterate(tox) }
+        loop { tox_iterate(tox, std::ptr::null_mut()); }
     }
     
 }

@@ -10,3 +10,4 @@ authors = ["JonathanS <mail@strfry.org>"]
 
 libc = "0.2.43"
 rustc-serialize = "0.3.24" 
+portaudio = "0.7.0"
